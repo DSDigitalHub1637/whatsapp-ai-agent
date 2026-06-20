@@ -69,7 +69,7 @@ def get_gemini_response(user_message):
     
     try:
         # URL de l'API Gemini
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
         
         params = {
             "key": GEMINI_API_KEY
