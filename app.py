@@ -20,11 +20,7 @@ LIEN_PAIEMENT = os.environ.get("LIEN_PAIEMENT", "Contactez-nous pour payer")
 # ==============================
 # MÉMOIRE DES CONVERSATIONS
 # ==============================
-# Dictionnaire qui stocke les conversations par utilisateur
-# Format : { "user_id": [ {"role": "user", "text": "..."}, {"role": "model", "text": "..."} ] }
 conversations = {}
-
-# Nombre maximum de messages à garder en mémoire par utilisateur (pour économiser tokens)
 MAX_HISTORY = 10
 
 # ==============================
@@ -63,7 +59,7 @@ Si le client veut payer, donne ce lien ou info : {LIEN_PAIEMENT}
 """
 
 # ==============================
-# FONCTION GEMINI AVEC MÉMOIRE
+# FONCTION GEMINI AVEC MÉMOIRE (CORRIGÉE)
 # ==============================
 
 def get_gemini_response(user_message, user_id="default"):
@@ -73,28 +69,22 @@ def get_gemini_response(user_message, user_id="default"):
         return "⚠️ GEMINI_API_KEY non configurée."
     
     try:
-        # Récupérer ou créer l'historique de cet utilisateur
         if user_id not in conversations:
             conversations[user_id] = []
         
-        # Ajouter le message de l'utilisateur à l'historique
+        # Ajouter le message utilisateur
         conversations[user_id].append({
             "role": "user",
             "parts": [{"text": user_message}]
         })
         
-        # Limiter l'historique aux derniers MAX_HISTORY messages
+        # Limiter l'historique
         if len(conversations[user_id]) > MAX_HISTORY * 2:
             conversations[user_id] = conversations[user_id][-MAX_HISTORY * 2:]
         
-        # URL de l'API Gemini
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
+        params = {"key": GEMINI_API_KEY}
         
-        params = {
-            "key": GEMINI_API_KEY
-        }
-        
-        # Construire la requête avec system_instruction + historique
         data = {
             "system_instruction": {
                 "parts": [{"text": SYSTEM_PROMPT}]
@@ -113,33 +103,31 @@ def get_gemini_response(user_message, user_id="default"):
         
         if "candidates" in result and len(result["candidates"]) > 0:
             reply = result["candidates"][0]["content"]["parts"][0]["text"]
-            
-            # Ajouter la réponse de Samira à l'historique
             conversations[user_id].append({
                 "role": "model",
                 "parts": [{"text": reply}]
             })
-            
             return reply
         else:
             print("Erreur Gemini:", result)
+            # Retirer le dernier message de l'utilisateur pour éviter une mémoire corrompue
+            if conversations[user_id]:
+                conversations[user_id].pop()
             return "Désolée, je n'ai pas pu traiter votre demande. Pouvez-vous reformuler ?"
             
     except Exception as e:
         print("Erreur Gemini:", e)
+        if user_id in conversations and conversations[user_id]:
+            conversations[user_id].pop()
         return "Désolée, une erreur technique est survenue. Réessayez dans un instant."
 
 # ==============================
-# ROUTE ACCUEIL
+# ROUTES
 # ==============================
 
 @app.route("/", methods=["GET"])
 def home():
     return "✅ Samira - DS Digital Hub est en ligne avec mémoire !"
-
-# ==============================
-# ROUTE TEST
-# ==============================
 
 @app.route("/test", methods=["GET"])
 def test():
@@ -148,13 +136,8 @@ def test():
     reply = get_gemini_response("Bonjour, je veux créer un site web", "test_user")
     return reply
 
-# ==============================
-# ROUTE RESET MÉMOIRE
-# ==============================
-
 @app.route("/reset", methods=["GET"])
 def reset_memory():
-    """Permet de réinitialiser la mémoire d'un utilisateur (pour les tests)"""
     user_id = request.args.get("user", "default")
     if user_id in conversations:
         del conversations[user_id]
@@ -162,7 +145,7 @@ def reset_memory():
     return f"ℹ️ Aucune mémoire trouvée pour '{user_id}'."
 
 # ==============================
-# INTERFACE WEB CHAT
+# INTERFACE WEB MODERNE
 # ==============================
 
 PAGE_CHAT = """
@@ -171,176 +154,446 @@ PAGE_CHAT = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Samira - DS Digital Hub</title>
+    <title>Samira • DS Digital Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1729 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            color: white;
+            position: relative;
+        }
+
+        /* Background animé */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+            animation: bgFlow 20s ease infinite;
+            z-index: 0;
+        }
+
+        @keyframes bgFlow {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(180deg); }
+        }
+
+        .app-container {
+            position: relative;
+            z-index: 1;
             height: 100vh;
             display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .chat-container {
-            width: 100%;
-            max-width: 500px;
-            height: 90vh;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            display: flex;
             flex-direction: column;
-            overflow: hidden;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0;
         }
-        .chat-header {
-            background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
-            color: white;
-            padding: 20px;
+
+        /* HEADER */
+        .header {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 16px;
+            padding: 20px 24px;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
-        .avatar {
+
+        /* Logo DS */
+        .logo-container {
+            position: relative;
             width: 50px;
             height: 50px;
-            border-radius: 50%;
-            background: white;
-            color: #25d366;
             display: flex;
-            justify-content: center;
             align-items: center;
-            font-size: 24px;
-            font-weight: bold;
+            justify-content: center;
         }
-        .header-info h1 { font-size: 18px; margin-bottom: 3px; }
-        .header-info p { font-size: 13px; opacity: 0.9; }
+
+        .logo-halo {
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            background: linear-gradient(135deg, #3b82f6, #6366f1, #8b5cf6);
+            border-radius: 14px;
+            opacity: 0.6;
+            filter: blur(10px);
+            animation: halo 3s ease-in-out infinite;
+        }
+
+        @keyframes halo {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.1); }
+        }
+
+        .logo-ds {
+            position: relative;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 22px;
+            color: white;
+            letter-spacing: -1px;
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .logo-ds span:first-child {
+            font-style: italic;
+        }
+
+        .header-info {
+            flex: 1;
+        }
+
+        .header-info h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: white;
+            letter-spacing: -0.3px;
+        }
+
+        .header-info .status {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 2px;
+        }
+
         .status-dot {
-            display: inline-block;
             width: 8px;
             height: 8px;
-            background: #00ff00;
+            background: #10b981;
             border-radius: 50%;
-            margin-right: 5px;
+            box-shadow: 0 0 12px #10b981;
+            animation: pulse 2s ease infinite;
         }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.2); }
+        }
+
         .reset-btn {
-            margin-left: auto;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 15px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .reset-btn:hover { background: rgba(255,255,255,0.3); }
+
+        .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        /* CHAT BOX */
         .chat-box {
             flex: 1;
-            padding: 20px;
             overflow-y: auto;
-            background: #f0f2f5;
+            padding: 24px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 16px;
+            scroll-behavior: smooth;
         }
+
+        .chat-box::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-box::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-box::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .chat-box::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* MESSAGES */
         .message {
             max-width: 75%;
-            padding: 12px 16px;
-            border-radius: 15px;
+            padding: 14px 18px;
+            border-radius: 18px;
             word-wrap: break-word;
-            animation: fadeIn 0.3s ease-in;
-            line-height: 1.4;
+            line-height: 1.5;
+            font-size: 15px;
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
         .message.user {
             align-self: flex-end;
-            background: #dcf8c6;
-            color: #000;
-            border-bottom-right-radius: 3px;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
         }
+
         .message.bot {
             align-self: flex-start;
-            background: white;
-            color: #000;
-            border-bottom-left-radius: 3px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom-left-radius: 4px;
         }
+
+        /* TYPING INDICATOR */
         .typing {
             align-self: flex-start;
-            background: white;
-            padding: 12px 16px;
-            border-radius: 15px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(10px);
+            padding: 16px 20px;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            gap: 5px;
+            align-items: center;
         }
+
         .typing span {
-            display: inline-block;
             width: 8px;
             height: 8px;
-            background: #999;
+            background: rgba(255, 255, 255, 0.5);
             border-radius: 50%;
-            margin: 0 2px;
-            animation: bounce 1.4s infinite;
+            animation: typingBounce 1.4s infinite ease-in-out;
         }
+
         .typing span:nth-child(2) { animation-delay: 0.2s; }
         .typing span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes bounce {
-            0%, 60%, 100% { transform: translateY(0); }
-            30% { transform: translateY(-8px); }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+            30% { transform: translateY(-8px); opacity: 1; }
         }
-        .chat-input {
+
+        /* SUGGESTIONS DE QUESTIONS */
+        .suggestions {
             display: flex;
-            padding: 12px;
-            background: white;
-            border-top: 1px solid #eee;
+            flex-wrap: wrap;
             gap: 8px;
+            margin-top: 12px;
+            align-self: flex-start;
+            max-width: 75%;
         }
-        .chat-input input {
+
+        .suggestion-chip {
+            padding: 10px 16px;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            color: #93c5fd;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .suggestion-chip:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.5);
+            transform: translateY(-2px);
+        }
+
+        /* INPUT AREA */
+        .input-area {
+            padding: 16px 24px 24px;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 6px;
+            transition: all 0.2s;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+
+        .input-wrapper input {
             flex: 1;
             padding: 12px 16px;
-            border: 1px solid #ddd;
-            border-radius: 25px;
-            outline: none;
-            font-size: 15px;
-        }
-        .chat-input input:focus { border-color: #25d366; }
-        .chat-input button {
-            padding: 12px 20px;
+            background: transparent;
             border: none;
-            background: #25d366;
+            outline: none;
             color: white;
             font-size: 15px;
-            cursor: pointer;
-            border-radius: 25px;
-            font-weight: 600;
-            transition: background 0.2s;
+            font-family: inherit;
         }
-        .chat-input button:hover { background: #1ebe5d; }
-        .chat-input button:disabled { background: #999; cursor: not-allowed; }
+
+        .input-wrapper input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .send-btn {
+            width: 44px;
+            height: 44px;
+            border: none;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            color: white;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .send-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .footer-info {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* MOBILE */
+        @media (max-width: 600px) {
+            .header {
+                padding: 16px 18px;
+            }
+            .chat-box {
+                padding: 18px;
+            }
+            .message {
+                max-width: 85%;
+                font-size: 14px;
+            }
+            .input-area {
+                padding: 14px 18px 20px;
+            }
+            .header-info h1 {
+                font-size: 16px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <div class="avatar">S</div>
+    <div class="app-container">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="logo-container">
+                <div class="logo-halo"></div>
+                <div class="logo-ds"><span>D</span><span>S</span></div>
+            </div>
             <div class="header-info">
                 <h1>Samira</h1>
-                <p><span class="status-dot"></span>En ligne - DS Digital Hub</p>
+                <div class="status">
+                    <span class="status-dot"></span>
+                    En ligne • DS Digital Hub
+                </div>
             </div>
-            <button class="reset-btn" onclick="resetChat()">🔄 Reset</button>
+            <button class="reset-btn" onclick="resetChat()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 4v6h6M23 20v-6h-6"/>
+                    <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
+                </svg>
+                Nouveau
+            </button>
         </div>
 
+        <!-- CHAT -->
         <div class="chat-box" id="chatBox">
             <div class="message bot">
-                Bonjour 👋 Je suis Samira, l'assistante de DS Digital Hub. Comment puis-je vous aider aujourd'hui ?
+                Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>. Comment puis-je vous aider à booster votre business aujourd'hui ?
+            </div>
+            <div class="suggestions" id="suggestions">
+                <div class="suggestion-chip" onclick="sendSuggestion('Je veux créer un site web')">🌐 Créer un site web</div>
+                <div class="suggestion-chip" onclick="sendSuggestion('Je veux un logo professionnel')">🎨 Un logo pro</div>
+                <div class="suggestion-chip" onclick="sendSuggestion('Gestion de mes réseaux sociaux')">📱 Réseaux sociaux</div>
+                <div class="suggestion-chip" onclick="sendSuggestion('Photographie professionnelle')">📸 Photographie</div>
             </div>
         </div>
 
-        <div class="chat-input">
-            <input type="text" id="userInput" placeholder="Écrivez votre message..." autocomplete="off">
-            <button onclick="sendMessage()" id="sendBtn">Envoyer</button>
+        <!-- INPUT -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <input type="text" id="userInput" placeholder="Posez votre question à Samira..." autocomplete="off">
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="footer-info">
+                Powered by DS Digital Hub • Samira IA
+            </div>
         </div>
     </div>
 
@@ -348,8 +601,8 @@ PAGE_CHAT = """
         const chatBox = document.getElementById('chatBox');
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
+        const suggestions = document.getElementById('suggestions');
 
-        // Générer un ID unique pour cette session
         let sessionId = localStorage.getItem('samira_session');
         if (!sessionId) {
             sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -360,9 +613,17 @@ PAGE_CHAT = """
             if (e.key === 'Enter') sendMessage();
         });
 
+        function sendSuggestion(text) {
+            userInput.value = text;
+            sendMessage();
+        }
+
         async function sendMessage() {
             const message = userInput.value.trim();
             if (!message) return;
+
+            // Cacher les suggestions au premier message
+            if (suggestions) suggestions.style.display = 'none';
 
             addMessage(message, 'user');
             userInput.value = '';
@@ -395,20 +656,29 @@ PAGE_CHAT = """
         function addMessage(text, sender) {
             const div = document.createElement('div');
             div.className = `message ${sender}`;
-            div.textContent = text;
+            div.innerHTML = text.replace(/\\n/g, '<br>');
             chatBox.appendChild(div);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
         async function resetChat() {
-            if (!confirm('Voulez-vous vraiment effacer cette conversation ?')) return;
+            if (!confirm('Démarrer une nouvelle conversation ?')) return;
             
             await fetch('/reset?user=' + sessionId);
-            chatBox.innerHTML = '<div class="message bot">Bonjour 👋 Je suis Samira, l\\'assistante de DS Digital Hub. Comment puis-je vous aider aujourd\\'hui ?</div>';
-            
-            // Nouveau session ID
             sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('samira_session', sessionId);
+            
+            chatBox.innerHTML = `
+                <div class="message bot">
+                    Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>. Comment puis-je vous aider à booster votre business aujourd'hui ?
+                </div>
+                <div class="suggestions" id="suggestions">
+                    <div class="suggestion-chip" onclick="sendSuggestion('Je veux créer un site web')">🌐 Créer un site web</div>
+                    <div class="suggestion-chip" onclick="sendSuggestion('Je veux un logo professionnel')">🎨 Un logo pro</div>
+                    <div class="suggestion-chip" onclick="sendSuggestion('Gestion de mes réseaux sociaux')">📱 Réseaux sociaux</div>
+                    <div class="suggestion-chip" onclick="sendSuggestion('Photographie professionnelle')">📸 Photographie</div>
+                </div>
+            `;
         }
     </script>
 </body>
@@ -435,7 +705,7 @@ def chat_api():
         return jsonify({"reply": f"Erreur : {str(e)}"})
 
 # ==============================
-# VERIFICATION WEBHOOK META
+# WEBHOOK WHATSAPP
 # ==============================
 
 @app.route("/webhook", methods=["GET"])
@@ -444,22 +714,15 @@ def verify():
         return request.args.get("hub.challenge")
     return "Erreur de vérification", 403
 
-# ==============================
-# RECEPTION MESSAGE WHATSAPP
-# ==============================
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-
     try:
         message = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
         from_number = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
 
-        # ===== Envoi vers Gemini avec mémoire (user_id = numéro WhatsApp) =====
         reply = get_gemini_response(message, user_id=from_number)
 
-        # ===== Envoi réponse WhatsApp =====
         requests.post(
             f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages",
             headers={
@@ -472,13 +735,9 @@ def webhook():
                 "text": {"body": reply}
             }
         )
-
     except Exception as e:
         print("Erreur :", e)
-
     return "ok"
-
-# ==============================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
