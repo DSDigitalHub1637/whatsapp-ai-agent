@@ -24,7 +24,7 @@ conversations = {}
 MAX_HISTORY = 10
 
 # ==============================
-# PROMPT SYSTEME - SAMIRA
+# PROMPT SYSTEME
 # ==============================
 
 SYSTEM_PROMPT = f"""
@@ -59,12 +59,10 @@ Si le client veut payer, donne ce lien ou info : {LIEN_PAIEMENT}
 """
 
 # ==============================
-# FONCTION GEMINI AVEC MÉMOIRE (CORRIGÉE)
+# FONCTION GEMINI AVEC MÉMOIRE
 # ==============================
 
 def get_gemini_response(user_message, user_id="default"):
-    """Appelle l'API Gemini avec l'historique de conversation"""
-    
     if not GEMINI_API_KEY or GEMINI_API_KEY == "test":
         return "⚠️ GEMINI_API_KEY non configurée."
     
@@ -72,13 +70,11 @@ def get_gemini_response(user_message, user_id="default"):
         if user_id not in conversations:
             conversations[user_id] = []
         
-        # Ajouter le message utilisateur
         conversations[user_id].append({
             "role": "user",
             "parts": [{"text": user_message}]
         })
         
-        # Limiter l'historique
         if len(conversations[user_id]) > MAX_HISTORY * 2:
             conversations[user_id] = conversations[user_id][-MAX_HISTORY * 2:]
         
@@ -86,9 +82,7 @@ def get_gemini_response(user_message, user_id="default"):
         params = {"key": GEMINI_API_KEY}
         
         data = {
-            "system_instruction": {
-                "parts": [{"text": SYSTEM_PROMPT}]
-            },
+            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
             "contents": conversations[user_id],
             "generationConfig": {
                 "temperature": 0.7,
@@ -110,7 +104,6 @@ def get_gemini_response(user_message, user_id="default"):
             return reply
         else:
             print("Erreur Gemini:", result)
-            # Retirer le dernier message de l'utilisateur pour éviter une mémoire corrompue
             if conversations[user_id]:
                 conversations[user_id].pop()
             return "Désolée, je n'ai pas pu traiter votre demande. Pouvez-vous reformuler ?"
@@ -145,7 +138,7 @@ def reset_memory():
     return f"ℹ️ Aucune mémoire trouvée pour '{user_id}'."
 
 # ==============================
-# INTERFACE WEB MODERNE
+# INTERFACE WEB AVEC SIDEBAR
 # ==============================
 
 PAGE_CHAT = """
@@ -172,7 +165,6 @@ PAGE_CHAT = """
             position: relative;
         }
 
-        /* Background animé */
         body::before {
             content: '';
             position: fixed;
@@ -198,32 +190,34 @@ PAGE_CHAT = """
             z-index: 1;
             height: 100vh;
             display: flex;
-            flex-direction: column;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 0;
         }
 
-        /* HEADER */
-        .header {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            padding: 20px 24px;
-            background: rgba(15, 23, 42, 0.6);
+        /* ====================== */
+        /* SIDEBAR GAUCHE        */
+        /* ====================== */
+        .sidebar {
+            width: 280px;
+            background: rgba(10, 14, 39, 0.7);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 20px;
+            overflow-y: auto;
         }
 
-        /* Logo DS */
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 32px;
+        }
+
         .logo-container {
             position: relative;
             width: 50px;
             height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
 
         .logo-halo {
@@ -261,8 +255,121 @@ PAGE_CHAT = """
             border: 1px solid rgba(255, 255, 255, 0.15);
         }
 
-        .logo-ds span:first-child {
-            font-style: italic;
+        .brand-info h2 {
+            font-size: 18px;
+            font-weight: 800;
+            color: white;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-info p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 2px;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 14px;
+            padding-left: 4px;
+        }
+
+        .services-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .service-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 14px;
+            font-weight: 500;
+            text-align: left;
+            width: 100%;
+        }
+
+        .service-item:hover {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: rgba(59, 130, 246, 0.4);
+            color: white;
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .service-icon {
+            font-size: 18px;
+            min-width: 24px;
+        }
+
+        .new-chat-btn {
+            margin-top: auto;
+            padding: 14px;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .new-chat-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.5);
+        }
+
+        /* ====================== */
+        /* ZONE PRINCIPALE        */
+        /* ====================== */
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 20px 24px;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .header-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 16px;
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
 
         .header-info {
@@ -270,14 +377,13 @@ PAGE_CHAT = """
         }
 
         .header-info h1 {
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
             color: white;
-            letter-spacing: -0.3px;
         }
 
         .header-info .status {
-            font-size: 13px;
+            font-size: 12px;
             color: rgba(255, 255, 255, 0.6);
             display: flex;
             align-items: center;
@@ -299,58 +405,28 @@ PAGE_CHAT = """
             50% { opacity: 0.6; transform: scale(1.2); }
         }
 
-        .reset-btn {
-            padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.05);
-            color: rgba(255, 255, 255, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .reset-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
-            color: white;
-        }
-
-        /* CHAT BOX */
         .chat-box {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 24px 32px;
             display: flex;
             flex-direction: column;
             gap: 16px;
             scroll-behavior: smooth;
         }
 
-        .chat-box::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .chat-box::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
+        .chat-box::-webkit-scrollbar { width: 6px; }
+        .chat-box::-webkit-scrollbar-track { background: transparent; }
         .chat-box::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
         }
-
         .chat-box::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.2);
         }
 
-        /* MESSAGES */
         .message {
-            max-width: 75%;
+            max-width: 70%;
             padding: 14px 18px;
             border-radius: 18px;
             word-wrap: break-word;
@@ -360,14 +436,8 @@ PAGE_CHAT = """
         }
 
         @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(15px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .message.user {
@@ -382,13 +452,11 @@ PAGE_CHAT = """
             align-self: flex-start;
             background: rgba(255, 255, 255, 0.06);
             backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
             color: white;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-bottom-left-radius: 4px;
         }
 
-        /* TYPING INDICATOR */
         .typing {
             align-self: flex-start;
             background: rgba(255, 255, 255, 0.06);
@@ -417,40 +485,10 @@ PAGE_CHAT = """
             30% { transform: translateY(-8px); opacity: 1; }
         }
 
-        /* SUGGESTIONS DE QUESTIONS */
-        .suggestions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 12px;
-            align-self: flex-start;
-            max-width: 75%;
-        }
-
-        .suggestion-chip {
-            padding: 10px 16px;
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 12px;
-            color: #93c5fd;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-
-        .suggestion-chip:hover {
-            background: rgba(59, 130, 246, 0.2);
-            border-color: rgba(59, 130, 246, 0.5);
-            transform: translateY(-2px);
-        }
-
-        /* INPUT AREA */
         .input-area {
-            padding: 16px 24px 24px;
-            background: rgba(15, 23, 42, 0.6);
+            padding: 16px 32px 24px;
+            background: rgba(15, 23, 42, 0.5);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
 
@@ -505,15 +543,9 @@ PAGE_CHAT = """
             box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
         }
 
-        .send-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .send-btn svg {
-            width: 20px;
-            height: 20px;
-        }
+        .send-btn svg { width: 20px; height: 20px; }
 
         .footer-info {
             text-align: center;
@@ -522,222 +554,22 @@ PAGE_CHAT = """
             color: rgba(255, 255, 255, 0.4);
         }
 
-        /* MOBILE */
-        @media (max-width: 600px) {
-            .header {
-                padding: 16px 18px;
+        /* MOBILE - Sidebar disparaît */
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
             }
-            .chat-box {
-                padding: 18px;
+            .mobile-menu-btn {
+                display: flex !important;
             }
-            .message {
-                max-width: 85%;
-                font-size: 14px;
-            }
-            .input-area {
-                padding: 14px 18px 20px;
-            }
-            .header-info h1 {
-                font-size: 16px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="app-container">
-        <!-- HEADER -->
-        <div class="header">
-            <div class="logo-container">
-                <div class="logo-halo"></div>
-                <div class="logo-ds"><span>D</span><span>S</span></div>
-            </div>
-            <div class="header-info">
-                <h1>Samira</h1>
-                <div class="status">
-                    <span class="status-dot"></span>
-                    En ligne • DS Digital Hub
-                </div>
-            </div>
-            <button class="reset-btn" onclick="resetChat()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 4v6h6M23 20v-6h-6"/>
-                    <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/>
-                </svg>
-                Nouveau
-            </button>
-        </div>
-
-        <!-- CHAT -->
-        <div class="chat-box" id="chatBox">
-            <div class="message bot">
-                Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>. Comment puis-je vous aider à booster votre business aujourd'hui ?
-            </div>
-            <div class="suggestions" id="suggestions">
-                <div class="suggestion-chip" onclick="sendSuggestion('Je veux créer un site web')">🌐 Créer un site web</div>
-                <div class="suggestion-chip" onclick="sendSuggestion('Je veux un logo professionnel')">🎨 Un logo pro</div>
-                <div class="suggestion-chip" onclick="sendSuggestion('Gestion de mes réseaux sociaux')">📱 Réseaux sociaux</div>
-                <div class="suggestion-chip" onclick="sendSuggestion('Photographie professionnelle')">📸 Photographie</div>
-            </div>
-        </div>
-
-        <!-- INPUT -->
-        <div class="input-area">
-            <div class="input-wrapper">
-                <input type="text" id="userInput" placeholder="Posez votre question à Samira..." autocomplete="off">
-                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"/>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="footer-info">
-                Powered by DS Digital Hub • Samira IA
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const suggestions = document.getElementById('suggestions');
-
-        let sessionId = localStorage.getItem('samira_session');
-        if (!sessionId) {
-            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('samira_session', sessionId);
+            .chat-box { padding: 18px; }
+            .input-area { padding: 14px 18px 20px; }
+            .message { max-width: 85%; font-size: 14px; }
         }
 
-        userInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') sendMessage();
-        });
-
-        function sendSuggestion(text) {
-            userInput.value = text;
-            sendMessage();
-        }
-
-        async function sendMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            // Cacher les suggestions au premier message
-            if (suggestions) suggestions.style.display = 'none';
-
-            addMessage(message, 'user');
-            userInput.value = '';
-            sendBtn.disabled = true;
-
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'typing';
-            typingDiv.id = 'typing';
-            typingDiv.innerHTML = '<span></span><span></span><span></span>';
-            chatBox.appendChild(typingDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            try {
-                const response = await fetch('/chat-api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message, user_id: sessionId })
-                });
-                const data = await response.json();
-                document.getElementById('typing').remove();
-                addMessage(data.reply, 'bot');
-            } catch (error) {
-                document.getElementById('typing').remove();
-                addMessage('Désolée, une erreur est survenue. Réessayez.', 'bot');
-            }
-            sendBtn.disabled = false;
-            userInput.focus();
-        }
-
-        function addMessage(text, sender) {
-            const div = document.createElement('div');
-            div.className = `message ${sender}`;
-            div.innerHTML = text.replace(/\\n/g, '<br>');
-            chatBox.appendChild(div);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        async function resetChat() {
-            if (!confirm('Démarrer une nouvelle conversation ?')) return;
-            
-            await fetch('/reset?user=' + sessionId);
-            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('samira_session', sessionId);
-            
-            chatBox.innerHTML = `
-                <div class="message bot">
-                    Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>. Comment puis-je vous aider à booster votre business aujourd'hui ?
-                </div>
-                <div class="suggestions" id="suggestions">
-                    <div class="suggestion-chip" onclick="sendSuggestion('Je veux créer un site web')">🌐 Créer un site web</div>
-                    <div class="suggestion-chip" onclick="sendSuggestion('Je veux un logo professionnel')">🎨 Un logo pro</div>
-                    <div class="suggestion-chip" onclick="sendSuggestion('Gestion de mes réseaux sociaux')">📱 Réseaux sociaux</div>
-                    <div class="suggestion-chip" onclick="sendSuggestion('Photographie professionnelle')">📸 Photographie</div>
-                </div>
-            `;
-        }
-    </script>
-</body>
-</html>
-"""
-
-@app.route("/chat", methods=["GET"])
-def chat_page():
-    return render_template_string(PAGE_CHAT)
-
-@app.route("/chat-api", methods=["POST"])
-def chat_api():
-    try:
-        data = request.json
-        message = data.get("message", "")
-        user_id = data.get("user_id", "default")
-        
-        if not message:
-            return jsonify({"reply": "Message vide."})
-        
-        reply = get_gemini_response(message, user_id)
-        return jsonify({"reply": reply})
-    except Exception as e:
-        return jsonify({"reply": f"Erreur : {str(e)}"})
-
-# ==============================
-# WEBHOOK WHATSAPP
-# ==============================
-
-@app.route("/webhook", methods=["GET"])
-def verify():
-    if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-        return request.args.get("hub.challenge")
-    return "Erreur de vérification", 403
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.json
-    try:
-        message = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
-        from_number = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
-
-        reply = get_gemini_response(message, user_id=from_number)
-
-        requests.post(
-            f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages",
-            headers={
-                "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "messaging_product": "whatsapp",
-                "to": from_number,
-                "text": {"body": reply}
-            }
-        )
-    except Exception as e:
-        print("Erreur :", e)
-    return "ok"
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+        .mobile-menu-btn {
+            display: none;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 
