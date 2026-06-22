@@ -572,4 +572,254 @@ PAGE_CHAT = """
             width: 40px;
             height: 40px;
             background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mobile-sidebar {
+            display: none;
+        }
+
+        .mobile-sidebar.open {
+            display: flex;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            background: rgba(10, 14, 39, 0.95);
+            backdrop-filter: blur(20px);
+            flex-direction: column;
+            padding: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- ============= SIDEBAR ============= -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-container">
+                    <div class="logo-halo"></div>
+                    <div class="logo-ds"><span style="font-style:italic">D</span><span>S</span></div>
+                </div>
+                <div class="brand-info">
+                    <h2>DS Digital Hub</h2>
+                    <p>Assistant Samira</p>
+                </div>
+            </div>
+
+            <div class="sidebar-title">Nos Services</div>
+            <div class="services-list">
+                <button class="service-item" onclick="sendSuggestion('Je veux créer un site web pour mon entreprise')">
+                    <span class="service-icon">🌐</span>
+                    <span>Créer un site web</span>
+                </button>
+                <button class="service-item" onclick="sendSuggestion('Je veux un logo professionnel')">
+                    <span class="service-icon">🎨</span>
+                    <span>Logo & Design</span>
+                </button>
+                <button class="service-item" onclick="sendSuggestion('Je veux gérer mes réseaux sociaux')">
+                    <span class="service-icon">📱</span>
+                    <span>Réseaux sociaux</span>
+                </button>
+                <button class="service-item" onclick="sendSuggestion('Je veux des photos professionnelles')">
+                    <span class="service-icon">📸</span>
+                    <span>Photographie</span>
+                </button>
+                <button class="service-item" onclick="sendSuggestion('Je veux automatiser mon business avec l\\'IA')">
+                    <span class="service-icon">🤖</span>
+                    <span>Automatisation IA</span>
+                </button>
+                <button class="service-item" onclick="sendSuggestion('Je veux un service de streaming')">
+                    <span class="service-icon">🎬</span>
+                    <span>Streaming pro</span>
+                </button>
+            </div>
+
+            <button class="new-chat-btn" onclick="resetChat()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Nouvelle conversation
+            </button>
+        </aside>
+
+        <!-- ============= MAIN AREA ============= -->
+        <main class="main-area">
+            <div class="chat-header">
+                <div class="header-avatar">S</div>
+                <div class="header-info">
+                    <h1>Samira</h1>
+                    <div class="status">
+                        <span class="status-dot"></span>
+                        En ligne maintenant
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-box" id="chatBox">
+                <div class="message bot">
+                    Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>.<br><br>
+                    Choisissez un service à gauche ou posez-moi directement votre question. Comment puis-je vous aider à booster votre business aujourd'hui ?
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="userInput" placeholder="Posez votre question à Samira..." autocomplete="off">
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="footer-info">
+                    Powered by DS Digital Hub • Samira IA
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        let sessionId = localStorage.getItem('samira_session');
+        if (!sessionId) {
+            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('samira_session', sessionId);
+        }
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        function sendSuggestion(text) {
+            userInput.value = text;
+            sendMessage();
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, 'user');
+            userInput.value = '';
+            sendBtn.disabled = true;
+
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing';
+            typingDiv.id = 'typing';
+            typingDiv.innerHTML = '<span></span><span></span><span></span>';
+            chatBox.appendChild(typingDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                const response = await fetch('/chat-api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, user_id: sessionId })
+                });
+                const data = await response.json();
+                document.getElementById('typing').remove();
+                addMessage(data.reply, 'bot');
+            } catch (error) {
+                document.getElementById('typing').remove();
+                addMessage('Désolée, une erreur est survenue. Réessayez.', 'bot');
+            }
+            sendBtn.disabled = false;
+            userInput.focus();
+        }
+
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `message ${sender}`;
+            div.innerHTML = text.replace(/\\n/g, '<br>');
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function resetChat() {
+            if (!confirm('Démarrer une nouvelle conversation ?')) return;
+            
+            await fetch('/reset?user=' + sessionId);
+            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('samira_session', sessionId);
+            
+            chatBox.innerHTML = `
+                <div class="message bot">
+                    Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>.<br><br>
+                    Choisissez un service à gauche ou posez-moi directement votre question. Comment puis-je vous aider à booster votre business aujourd'hui ?
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route("/chat", methods=["GET"])
+def chat_page():
+    return render_template_string(PAGE_CHAT)
+
+@app.route("/chat-api", methods=["POST"])
+def chat_api():
+    try:
+        data = request.json
+        message = data.get("message", "")
+        user_id = data.get("user_id", "default")
+        
+        if not message:
+            return jsonify({"reply": "Message vide."})
+        
+        reply = get_gemini_response(message, user_id)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"reply": f"Erreur : {str(e)}"})
+
+# ==============================
+# WEBHOOK WHATSAPP
+# ==============================
+
+@app.route("/webhook", methods=["GET"])
+def verify():
+    if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+        return request.args.get("hub.challenge")
+    return "Erreur de vérification", 403
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    try:
+        message = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
+        from_number = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
+
+        reply = get_gemini_response(message, user_id=from_number)
+
+        requests.post(
+            f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages",
+            headers={
+                "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "messaging_product": "whatsapp",
+                "to": from_number,
+                "text": {"body": reply}
+            }
+        )
+    except Exception as e:
+        print("Erreur :", e)
+    return "ok"
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
