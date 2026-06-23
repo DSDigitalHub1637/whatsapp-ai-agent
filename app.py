@@ -1,9 +1,13 @@
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, render_template_string, jsonify, session, redirect, url_for
 import requests
 import os
 import json
+import jwt
+from functools import wraps
+from supabase import create_client, Client
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "samira-ds-hub-secret-2026")
 
 # ==============================
 # VARIABLES D'ENVIRONNEMENT
@@ -16,6 +20,10 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 LIEN_RDV = os.environ.get("LIEN_RDV", "Contactez-nous pour un RDV")
 LIEN_PAIEMENT = os.environ.get("LIEN_PAIEMENT", "Contactez-nous pour payer")
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://fzjqtmjnhykejojeesmh.supabase.co")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY) if SUPABASE_SERVICE_KEY else None
 
 # ==============================
 # MÉMOIRE DES CONVERSATIONS
@@ -115,12 +123,50 @@ def get_gemini_response(user_message, user_id="default"):
         return "Désolée, une erreur technique est survenue. Réessayez dans un instant."
 
 # ==============================
+# AUTHENTIFICATION & SUPABASE
+# ==============================
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("user"):
+            return redirect(url_for("login_page"))
+        return f(*args, **kwargs)
+    return decorated
+
+def save_to_supabase(user_id, role, content):
+    if not supabase:
+        return
+    try:
+        conv = supabase.table("conversations").select("id").eq("user_id", user_id).eq("status", "active").limit(1).execute()
+        if conv.data:
+            conversation_id = conv.data[0]["id"]
+        else:
+            new_conv = supabase.table("conversations").insert({
+                "user_id": user_id,
+                "title": "Conversation avec Samira",
+                "status": "active",
+                "topic_type": "general"
+            }).execute()
+            conversation_id = new_conv.data[0]["id"]
+        
+        supabase.table("messages").insert({
+            "conversation_id": conversation_id,
+            "role": role,
+            "content": content
+        }).execute()
+    except Exception as e:
+        print(f"Erreur Supabase: {e}")
+
+# ==============================
 # ROUTES
 # ==============================
 
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ Samira - DS Digital Hub est en ligne avec mémoire !"
+    if session.get("user"):
+        return redirect(url_for("chat_page"))
+    return redirect(url_for("login_page"))
 
 @app.route("/test", methods=["GET"])
 def test():
@@ -136,6 +182,171 @@ def reset_memory():
         del conversations[user_id]
         return f"✅ Mémoire de '{user_id}' réinitialisée."
     return f"ℹ️ Aucune mémoire trouvée pour '{user_id}'."
+
+# ==============================
+# ROUTES AUTHENTIFICATION
+# ==============================
+
+@app.route("/login")
+def login_page():
+    return render_template_string(PAGE_LOGIN)
+
+@app.route("/auth/google")
+def auth_google():
+    redirect_url = url_for("auth_callback", _external=True)
+    auth_url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_url}"
+    return redirect(auth_url)
+
+@app.route("/auth/callback")
+def auth_callback():
+    return render_template_string(PAGE_CALLBACK)
+
+@app.route("/auth/set-session", methods=["POST"])
+def set_session_route():
+    try:
+        data = request.json
+        access_token = data.get("access_token")
+        if not access_token:
+            return jsonify({"error": "No token"}), 400
+        
+        decoded = jwt.decode(access_token, options={"verify_signature": False})
+        user_id = decoded.get("sub")
+        email = decoded.get("email")
+        
+        display_name = email
+        avatar_url = None
+        if supabase:
+            try:
+                user_info = supabase.table("users").select("*").eq("id", user_id).execute()
+                if user_info.data:
+                    display_name = user_info.data[0].get("display_name") or email
+                    avatar_url = user_info.data[0].get("avatar_url")
+            except Exception as e:
+                print(f"Info user: {e}")
+        
+        session["user"] = {
+            "id": user_id,
+            "email": email,
+            "name": display_name,
+            "avatar": avatar_url
+        }
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Erreur set_session: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/auth/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
+
+# ==============================
+# PAGE LOGIN
+# ==============================
+
+PAGE_LOGIN = """
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion • DS Digital Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter',sans-serif; }
+        body {
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1729 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 20px;
+        }
+        .login-card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 50px 40px;
+            border-radius: 24px;
+            text-align: center;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+        .logo-ds {
+            width: 80px; height: 80px;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            border-radius: 18px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 32px;
+            margin: 0 auto 24px;
+            box-shadow: 0 8px 30px rgba(59,130,246,0.4);
+        }
+        h1 { font-size: 26px; margin-bottom: 8px; font-weight: 800; }
+        p { color: rgba(255,255,255,0.6); margin-bottom: 32px; font-size: 15px; line-height: 1.5; }
+        .google-btn {
+            display: inline-flex; align-items: center; gap: 12px;
+            background: white; color: #1a1f3a;
+            padding: 14px 28px; border-radius: 12px;
+            text-decoration: none; font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .google-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+        .google-btn img { width: 22px; height: 22px; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-ds">DS</div>
+        <h1>Bienvenue chez DS Digital Hub</h1>
+        <p>Connectez-vous pour discuter avec Samira, votre assistante IA personnelle</p>
+        <a href="/auth/google" class="google-btn">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+            Se connecter avec Google
+        </a>
+    </div>
+</body>
+</html>
+"""
+
+PAGE_CALLBACK = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connexion en cours...</title>
+    <meta charset="UTF-8">
+</head>
+<body style="background:#0a0e27;color:white;font-family:sans-serif;text-align:center;padding:50px;">
+    <h2>Connexion en cours...</h2>
+    <p>Veuillez patienter, vous allez être redirigé.</p>
+    <script>
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        
+        if (accessToken) {
+            fetch('/auth/set-session', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({access_token: accessToken})
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    window.location.href = '/chat';
+                } else {
+                    document.body.innerHTML = '<h2>Erreur : ' + (data.error || 'inconnue') + '</h2><a href="/login" style="color:#3b82f6;">Réessayer</a>';
+                }
+            }).catch(err => {
+                document.body.innerHTML = '<h2>Erreur de connexion</h2><a href="/login" style="color:#3b82f6;">Réessayer</a>';
+            });
+        } else {
+            document.body.innerHTML = '<h2>Erreur : token non reçu</h2><a href="/login" style="color:#3b82f6;">Réessayer</a>';
+        }
+    </script>
+</body>
+</html>
+"""
 
 # ==============================
 # INTERFACE WEB AVEC SIDEBAR
@@ -192,9 +403,6 @@ PAGE_CHAT = """
             display: flex;
         }
 
-        /* ====================== */
-        /* SIDEBAR GAUCHE        */
-        /* ====================== */
         .sidebar {
             width: 280px;
             background: rgba(10, 14, 39, 0.7);
@@ -338,9 +546,37 @@ PAGE_CHAT = """
             box-shadow: 0 8px 24px rgba(59, 130, 246, 0.5);
         }
 
-        /* ====================== */
-        /* ZONE PRINCIPALE        */
-        /* ====================== */
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 12px;
+            margin-top: 12px;
+        }
+
+        .user-avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px;
+            overflow: hidden;
+        }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+        .user-details { flex: 1; min-width: 0; }
+        .user-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-email { font-size: 11px; color: rgba(255,255,255,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .logout-btn {
+            background: none; border: none; color: rgba(255,255,255,0.6);
+            cursor: pointer; padding: 6px; border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+
         .main-area {
             flex: 1;
             display: flex;
@@ -372,9 +608,7 @@ PAGE_CHAT = """
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
 
-        .header-info {
-            flex: 1;
-        }
+        .header-info { flex: 1; }
 
         .header-info h1 {
             font-size: 17px;
@@ -417,13 +651,8 @@ PAGE_CHAT = """
 
         .chat-box::-webkit-scrollbar { width: 6px; }
         .chat-box::-webkit-scrollbar-track { background: transparent; }
-        .chat-box::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-        }
-        .chat-box::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
+        .chat-box::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        .chat-box::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
         .message {
             max-width: 70%;
@@ -519,9 +748,7 @@ PAGE_CHAT = """
             font-family: inherit;
         }
 
-        .input-wrapper input::placeholder {
-            color: rgba(255, 255, 255, 0.4);
-        }
+        .input-wrapper input::placeholder { color: rgba(255, 255, 255, 0.4); }
 
         .send-btn {
             width: 44px;
@@ -544,7 +771,6 @@ PAGE_CHAT = """
         }
 
         .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
         .send-btn svg { width: 20px; height: 20px; }
 
         .footer-info {
@@ -554,54 +780,16 @@ PAGE_CHAT = """
             color: rgba(255, 255, 255, 0.4);
         }
 
-        /* MOBILE - Sidebar disparaît */
         @media (max-width: 768px) {
-            .sidebar {
-                display: none;
-            }
-            .mobile-menu-btn {
-                display: flex !important;
-            }
+            .sidebar { display: none; }
             .chat-box { padding: 18px; }
             .input-area { padding: 14px 18px 20px; }
             .message { max-width: 85%; font-size: 14px; }
-        }
-
-        .mobile-menu-btn {
-            display: none;
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            color: white;
-            cursor: pointer;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .mobile-sidebar {
-            display: none;
-        }
-
-        .mobile-sidebar.open {
-            display: flex;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 100;
-            background: rgba(10, 14, 39, 0.95);
-            backdrop-filter: blur(20px);
-            flex-direction: column;
-            padding: 24px;
         }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <!-- ============= SIDEBAR ============= -->
         <aside class="sidebar">
             <div class="sidebar-header">
                 <div class="logo-container">
@@ -632,7 +820,7 @@ PAGE_CHAT = """
                     <span class="service-icon">📸</span>
                     <span>Photographie</span>
                 </button>
-                <button class="service-item" onclick="sendSuggestion('Je veux automatiser mon business avec l\\'IA')">
+                <button class="service-item" onclick="sendSuggestion('Je veux automatiser mon business avec IA')">
                     <span class="service-icon">🤖</span>
                     <span>Automatisation IA</span>
                 </button>
@@ -649,9 +837,29 @@ PAGE_CHAT = """
                 </svg>
                 Nouvelle conversation
             </button>
+
+            <div class="user-info">
+                <div class="user-avatar">
+                    {% if user.avatar %}
+                        <img src="{{ user.avatar }}" alt="avatar">
+                    {% else %}
+                        {{ user.name[0]|upper }}
+                    {% endif %}
+                </div>
+                <div class="user-details">
+                    <div class="user-name">{{ user.name }}</div>
+                    <div class="user-email">{{ user.email }}</div>
+                </div>
+                <a href="/auth/logout" class="logout-btn" title="Déconnexion">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                </a>
+            </div>
         </aside>
 
-        <!-- ============= MAIN AREA ============= -->
         <main class="main-area">
             <div class="chat-header">
                 <div class="header-avatar">S</div>
@@ -666,7 +874,7 @@ PAGE_CHAT = """
 
             <div class="chat-box" id="chatBox">
                 <div class="message bot">
-                    Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>.<br><br>
+                    Bonjour {{ user.name.split(' ')[0] }} 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>.<br><br>
                     Choisissez un service à gauche ou posez-moi directement votre question. Comment puis-je vous aider à booster votre business aujourd'hui ?
                 </div>
             </div>
@@ -692,12 +900,6 @@ PAGE_CHAT = """
         const chatBox = document.getElementById('chatBox');
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
-
-        let sessionId = localStorage.getItem('samira_session');
-        if (!sessionId) {
-            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('samira_session', sessionId);
-        }
 
         userInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') sendMessage();
@@ -727,7 +929,7 @@ PAGE_CHAT = """
                 const response = await fetch('/chat-api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message, user_id: sessionId })
+                    body: JSON.stringify({ message: message })
                 });
                 const data = await response.json();
                 document.getElementById('typing').remove();
@@ -750,17 +952,7 @@ PAGE_CHAT = """
 
         async function resetChat() {
             if (!confirm('Démarrer une nouvelle conversation ?')) return;
-            
-            await fetch('/reset?user=' + sessionId);
-            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('samira_session', sessionId);
-            
-            chatBox.innerHTML = `
-                <div class="message bot">
-                    Bonjour 👋 Je suis <strong>Samira</strong>, votre assistante chez <strong>DS Digital Hub</strong>.<br><br>
-                    Choisissez un service à gauche ou posez-moi directement votre question. Comment puis-je vous aider à booster votre business aujourd'hui ?
-                </div>
-            `;
+            location.reload();
         }
     </script>
 </body>
@@ -768,20 +960,27 @@ PAGE_CHAT = """
 """
 
 @app.route("/chat", methods=["GET"])
+@require_auth
 def chat_page():
-    return render_template_string(PAGE_CHAT)
+    user = session.get("user")
+    return render_template_string(PAGE_CHAT, user=user)
 
 @app.route("/chat-api", methods=["POST"])
+@require_auth
 def chat_api():
     try:
         data = request.json
         message = data.get("message", "")
-        user_id = data.get("user_id", "default")
+        user_id = session["user"]["id"]
         
         if not message:
             return jsonify({"reply": "Message vide."})
         
         reply = get_gemini_response(message, user_id)
+        
+        save_to_supabase(user_id, "user", message)
+        save_to_supabase(user_id, "model", reply)
+        
         return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"reply": f"Erreur : {str(e)}"})
